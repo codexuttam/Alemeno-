@@ -1,0 +1,53 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: alemeno
+      POSTGRES_USER: alemeno
+      POSTGRES_PASSWORD: alemeno
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  web:
+    build: .
+    command: gunicorn alemenoproject.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_HOST=db
+      - DATABASE_NAME=alemeno
+      - DATABASE_USER=alemeno
+      - DATABASE_PASSWORD=alemeno
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    build: .
+    command: celery -A alemenoproject worker --loglevel=info
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_HOST=db
+      - DATABASE_NAME=alemeno
+      - DATABASE_USER=alemeno
+      - DATABASE_PASSWORD=alemeno
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
+    
