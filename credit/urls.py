@@ -10,4 +10,5 @@ urlpatterns = [
     path('ingestions', views.IngestionRunListView.as_view(), name='ingestions-list'),
     path('ingestions/<int:pk>', views.IngestionRunDetailView.as_view(), name='ingestions-detail'),
     path('ingestions/trigger', views.IngestionRunCreateView.as_view(), name='ingestions-trigger'),
+    path('ingestions/trigger/', views.IngestionRunCreateView.as_view(), name='ingestions-trigger-slash'),
 ]
