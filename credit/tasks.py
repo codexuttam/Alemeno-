@@ -25,6 +25,22 @@ def _get_candidate(row, keys):
     return None
 
 
+def _parse_decimal(val, default=Decimal(0)):
+    """Safely parse a value into Decimal, handling commas, percent signs and NaNs."""
+    if val is None:
+        return default
+    try:
+        if isinstance(val, str):
+            v = val.strip().replace(',', '').replace('%', '')
+            if v == '':
+                return default
+            return Decimal(v)
+        # pandas may give numpy types
+        return Decimal(str(val))
+    except Exception:
+        return default
+
+
 @shared_task(bind=True)
 def ingest_excel_task(self, customers_path: str = None, loans_path: str = None):
     """Ingest customers and loans from Excel into DB.
@@ -63,8 +79,8 @@ def ingest_excel_task(self, customers_path: str = None, loans_path: str = None):
             continue
 
         try:
-            monthly_raw = _get_candidate(row, ['monthly_salary', 'monthly income', 'monthly_income'])
-            monthly = Decimal(str(monthly_raw)) if monthly_raw is not None and not pd.isna(monthly_raw) else Decimal(0)
+            monthly_raw = _get_candidate(row, ['monthly_salary', 'monthly salary', 'monthly income', 'monthly_income'])
+            monthly = _parse_decimal(monthly_raw, Decimal(0)) if monthly_raw is not None and not pd.isna(monthly_raw) else Decimal(0)
         except Exception:
             monthly = Decimal(0)
 
