@@ -7,6 +7,11 @@ from .models import Customer, Loan
 from .serializers import CustomerSerializer, IngestionRunSerializer
 from .models import IngestionRun
 from rest_framework import generics
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from rest_framework import serializers as drf_serializers
+from .tasks import ingest_excel_task
+from django.utils import timezone
 from django.db.models import Sum
 import math
 from datetime import date
@@ -252,3 +257,31 @@ class IngestionRunListView(generics.ListAPIView):
 class IngestionRunDetailView(generics.RetrieveAPIView):
     queryset = IngestionRun.objects.all()
     serializer_class = IngestionRunSerializer
+
+
+class IngestionRunCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    class InputSerializer(drf_serializers.Serializer):
+        customers_path = drf_serializers.CharField(required=False, allow_null=True)
+        loans_path = drf_serializers.CharField(required=False, allow_null=True)
+
+    def post(self, request):
+        ser = self.InputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        customers_path = ser.validated_data.get('customers_path')
+        loans_path = ser.validated_data.get('loans_path')
+
+        # create run record first
+        run = IngestionRun.objects.create(status='running', started_at=timezone.now())
+
+        # enqueue task
+        try:
+            async_result = ingest_excel_task.apply_async(kwargs={'customers_path': customers_path, 'loans_path': loans_path})
+            run.task_id = async_result.id
+            run.save()
+        except Exception as e:
+            run.mark_failed(f"failed to enqueue task: {e}")
+            return Response({'detail': 'failed to enqueue task', 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(IngestionRunSerializer(run).data, status=status.HTTP_201_CREATED)
