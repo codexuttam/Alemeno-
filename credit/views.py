@@ -127,48 +127,48 @@ def check_eligibility_view(request):
 
     credit_score = compute_credit_score(customer)
 
-    # Determine allowed slab
-    allowed_min_rate = None
+    # Determine allowed slab and corrected interest rate
     approval = False
+    corrected_interest_rate = float(interest_rate)
+    
     if credit_score > 50:
         approval = True
-        allowed_min_rate = 0.0
-    elif 50 > credit_score > 30:
-        allowed_min_rate = 12.0
-        approval = float(interest_rate) >= allowed_min_rate
-    elif 30 > credit_score > 10:
-        allowed_min_rate = 16.0
-        approval = float(interest_rate) >= allowed_min_rate
-    else:
-        allowed_min_rate = None
-        approval = False
-
-    if allowed_min_rate is None:
-        corrected_rate = None
-    else:
-        corrected_rate = float(allowed_min_rate)
-        # if provided interest lower than allowed, set corrected to allowed
-        if float(interest_rate) < allowed_min_rate:
-            corrected_interest_rate = corrected_rate
+    elif credit_score > 30: # 30 < score <= 50
+        if float(interest_rate) > 12:
+            approval = True
         else:
-            corrected_interest_rate = float(interest_rate)
-
-    # if sum of current loans > approved limit
-    total_current = customer.loans.filter(approved=True).aggregate(total=Sum('loan_amount'))['total'] or Decimal(0)
-    if total_current > customer.approved_limit:
-        credit_score = 0
+            approval = True # It can be approved but with corrected rate
+            corrected_interest_rate = 12.0
+    elif credit_score > 10: # 10 < score <= 30
+        if float(interest_rate) > 16:
+            approval = True
+        else:
+            approval = True
+            corrected_interest_rate = 16.0
+    else:
         approval = False
 
-    monthly_installment = calculate_emi(loan_amount, Decimal(corrected_interest_rate) if allowed_min_rate is not None else interest_rate, tenure)
+    # Additional check: If sum of all current EMIs > 50% of monthly salary, don't approve
+    if current_emis > float(customer.monthly_salary) * 0.5:
+        approval = False
+        message = 'Current EMIs exceed 50% of monthly salary'
+    else:
+        message = 'Eligible' if approval else 'Credit score too low'
+
+    # if sum of current loans > approved limit (This is already in compute_credit_score returning 0, but good to be explicit if needed)
+    # Actually compute_credit_score handles it by returning 0, which falls into the last else (approval = False)
+
+    monthly_installment = None
+    if approval:
+        monthly_installment = calculate_emi(loan_amount, Decimal(str(corrected_interest_rate)), tenure)
 
     resp = {
         'customer_id': customer.id,
-        'approval': bool(approval),
+        'approval': approval,
         'interest_rate': float(interest_rate),
-        'corrected_interest_rate': corrected_interest_rate if allowed_min_rate is not None else None,
+        'corrected_interest_rate': corrected_interest_rate if corrected_interest_rate != float(interest_rate) else float(interest_rate),
         'tenure': tenure,
         'monthly_installment': monthly_installment,
-        'credit_score': credit_score,
     }
     return Response(resp, status=status.HTTP_200_OK)
 

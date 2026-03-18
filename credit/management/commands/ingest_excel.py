@@ -5,8 +5,8 @@ class Command(BaseCommand):
     help = 'Trigger ingestion of customer_data.xlsx and loan_data.xlsx from /data'
 
     def add_arguments(self, parser):
-        parser.add_argument('--customers', type=str, default='/data/customer_data.xlsx')
-        parser.add_argument('--loans', type=str, default='/data/loan_data.xlsx')
+        parser.add_argument('--customers', type=str, default=None)
+        parser.add_argument('--loans', type=str, default=None)
 
     def handle(self, *args, **options):
         cust = options['customers']
