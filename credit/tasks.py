@@ -1,9 +1,11 @@
 from celery import shared_task
 import pandas as pd
 from django.conf import settings
-from .models import Customer, Loan
+from .models import Customer, Loan, IngestionRun
 from decimal import Decimal
 import os
+from django.utils import timezone
+import traceback
 
 
 def _get_candidate(row, keys):
@@ -56,13 +58,23 @@ def ingest_excel_task(self, customers_path: str = None, loans_path: str = None):
     processed = {'customers_created': 0, 'customers_updated': 0, 'customers_skipped': 0,
                  'loans_created': 0, 'loans_updated': 0, 'loans_skipped': 0}
 
+    # create ingestion run record
+    run = IngestionRun.objects.create(task_id=getattr(self.request, 'id', None), started_at=timezone.now(), status='running')
+
     # Check files exist
     if not os.path.exists(customers_path):
+        run.mark_failed(f"no_customers_file: {customers_path}")
         return {'status': 'no_customers_file', 'path': customers_path}
     if not os.path.exists(loans_path):
+        run.mark_failed(f"no_loans_file: {loans_path}")
         return {'status': 'no_loans_file', 'path': loans_path}
 
-    df_c = pd.read_excel(customers_path)
+    try:
+        df_c = pd.read_excel(customers_path)
+    except Exception:
+        tb = traceback.format_exc()
+        run.mark_failed(f"failed reading customers file:\n{tb}")
+        return {'status': 'failed_read_customers', 'error': str(tb)}
     for idx, row in df_c.iterrows():
         # tolerate several possible column names for customer id
         cid = _get_candidate(row, ['customer_id', 'customer id', 'customerId', 'id'])
@@ -107,7 +119,12 @@ def ingest_excel_task(self, customers_path: str = None, loans_path: str = None):
             processed['customers_updated'] += 1
 
     # Loans
-    df_l = pd.read_excel(loans_path)
+    try:
+        df_l = pd.read_excel(loans_path)
+    except Exception:
+        tb = traceback.format_exc()
+        run.mark_failed(f"failed reading loans file:\n{tb}")
+        return {'status': 'failed_read_loans', 'error': str(tb)}
     for idx, row in df_l.iterrows():
         cid_raw = _get_candidate(row, ['customer id', 'customer_id', 'customerId', 'id'])
         if cid_raw is None:
@@ -155,6 +172,19 @@ def ingest_excel_task(self, customers_path: str = None, loans_path: str = None):
             processed['loans_created'] += 1
         else:
             processed['loans_updated'] += 1
+
+    # mark run finished
+    try:
+        run.mark_finished(processed, logs=str(processed))
+    except Exception:
+        # fallback: set basic fields
+        run.customers_created = processed.get('customers_created', 0)
+        run.customers_updated = processed.get('customers_updated', 0)
+        run.loans_created = processed.get('loans_created', 0)
+        run.loans_updated = processed.get('loans_updated', 0)
+        run.status = 'completed'
+        run.finished_at = timezone.now()
+        run.save()
 
     print(f"Ingestion summary: {processed}")
     return {'status': 'ok', **processed}

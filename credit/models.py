@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 class Customer(models.Model):
     first_name = models.CharField(max_length=100)
@@ -37,3 +38,42 @@ class Loan(models.Model):
 
     def __str__(self):
         return f"Loan {self.id} for Customer {self.customer_id}"
+
+
+class IngestionRun(models.Model):
+    STATUS_CHOICES = [
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    task_id = models.CharField(max_length=100, blank=True, null=True)
+    started_at = models.DateTimeField(default=timezone.now)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='running')
+
+    customers_created = models.IntegerField(default=0)
+    customers_updated = models.IntegerField(default=0)
+    customers_skipped = models.IntegerField(default=0)
+    loans_created = models.IntegerField(default=0)
+    loans_updated = models.IntegerField(default=0)
+    loans_skipped = models.IntegerField(default=0)
+
+    logs = models.TextField(blank=True, default='')
+
+    def mark_finished(self, processed: dict, logs: str = ''):
+        self.customers_created = processed.get('customers_created', 0)
+        self.customers_updated = processed.get('customers_updated', 0)
+        self.customers_skipped = processed.get('customers_skipped', 0)
+        self.loans_created = processed.get('loans_created', 0)
+        self.loans_updated = processed.get('loans_updated', 0)
+        self.loans_skipped = processed.get('loans_skipped', 0)
+        self.finished_at = timezone.now()
+        self.logs = (self.logs or '') + '\n' + logs
+        self.status = 'completed'
+        self.save()
+
+    def mark_failed(self, logs: str = ''):
+        self.finished_at = timezone.now()
+        self.logs = (self.logs or '') + '\n' + logs
+        self.status = 'failed'
+        self.save()

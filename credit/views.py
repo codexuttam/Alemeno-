@@ -4,7 +4,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Customer, Loan
-from .serializers import CustomerSerializer
+from .serializers import CustomerSerializer, IngestionRunSerializer
+from .models import IngestionRun
+from rest_framework import generics
 from django.db.models import Sum
 import math
 from datetime import date
@@ -240,3 +242,13 @@ def view_loans_by_customer(request, customer_id: int):
             'repayments_left': loan.emis_left(),
         })
     return Response(items, status=status.HTTP_200_OK)
+
+
+class IngestionRunListView(generics.ListAPIView):
+    queryset = IngestionRun.objects.all().order_by('-started_at')
+    serializer_class = IngestionRunSerializer
+
+
+class IngestionRunDetailView(generics.RetrieveAPIView):
+    queryset = IngestionRun.objects.all()
+    serializer_class = IngestionRunSerializer

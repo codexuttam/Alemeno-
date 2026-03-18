@@ -7,4 +7,6 @@ urlpatterns = [
     path('create-loan', views.create_loan_view, name='create-loan'),
     path('view-loan/<int:loan_id>', views.view_loan_view, name='view-loan'),
     path('view-loans/<int:customer_id>', views.view_loans_by_customer, name='view-loans'),
+    path('ingestions', views.IngestionRunListView.as_view(), name='ingestions-list'),
+    path('ingestions/<int:pk>', views.IngestionRunDetailView.as_view(), name='ingestions-detail'),
 ]
